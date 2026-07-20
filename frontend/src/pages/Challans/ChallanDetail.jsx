@@ -48,6 +48,23 @@ export default function ChallanDetail() {
     }
   }
 
+  async function handleDownloadPdf() {
+    setError('');
+    try {
+      const res = await challanApi.downloadPdf(id);
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${challan.challan_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError('Failed to download PDF');
+    }
+  }
+
   if (!challan) return <p className="text-slate-400">Loading...</p>;
 
   return (
@@ -57,7 +74,12 @@ export default function ChallanDetail() {
           <h1 className="text-2xl font-bold text-slate-900">{challan.challan_number}</h1>
           <p className="text-slate-500">{challan.customer_name}</p>
         </div>
-        <StatusBadge status={challan.status} />
+        <div className="flex items-center gap-3">
+          <StatusBadge status={challan.status} />
+          <button onClick={handleDownloadPdf} className="btn-secondary">
+            Download PDF
+          </button>
+        </div>
       </div>
 
       <Alert message={error} />

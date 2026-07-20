@@ -16,6 +16,7 @@ router.use(authenticate);
 
 router.get('/', authorize('admin', 'sales', 'warehouse', 'accounts'), challanController.list);
 router.get('/:id', authorize('admin', 'sales', 'warehouse', 'accounts'), challanController.getById);
+router.get('/:id/pdf', authorize('admin', 'sales', 'warehouse', 'accounts'), challanController.downloadPdf);
 router.post('/', authorize('admin', 'sales'), createValidation, challanController.create);
 router.patch('/:id/confirm', authorize('admin', 'sales', 'warehouse'), challanController.confirm);
 router.patch('/:id/cancel', authorize('admin', 'sales'), challanController.cancel);

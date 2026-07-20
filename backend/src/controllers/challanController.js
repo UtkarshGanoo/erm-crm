@@ -1,3 +1,4 @@
+const PDFDocument = require('pdfkit');
 const pool = require('../config/db');
 const { handleValidation } = require('../middleware/errorHandler');
 
@@ -310,4 +311,83 @@ async function cancel(req, res, next) {
   }
 }
 
-module.exports = { list, getById, create, confirm, cancel };
+// GET /challans/:id/pdf
+async function downloadPdf(req, res, next) {
+  try {
+    const challanResult = await pool.query(
+      `SELECT c.*, u.name as created_by_name
+       FROM challans c
+       LEFT JOIN users u ON u.id = c.created_by
+       WHERE c.id = $1`,
+      [req.params.id]
+    );
+    const challan = challanResult.rows[0];
+    if (!challan) return res.status(404).json({ success: false, message: 'Challan not found' });
+
+    const itemsResult = await pool.query('SELECT * FROM challan_items WHERE challan_id = $1', [req.params.id]);
+    const items = itemsResult.rows;
+    const customer = challan.customer_snapshot;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${challan.challan_number}.pdf"`);
+
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    doc.pipe(res);
+
+    doc.fontSize(20).text('SALES CHALLAN', { align: 'center' });
+    doc.moveDown(1.5);
+
+    doc.fontSize(11);
+    doc.text(`Challan Number: ${challan.challan_number}`);
+    doc.text(`Date: ${new Date(challan.created_at).toLocaleString()}`);
+    doc.text(`Status: ${challan.status}`);
+    if (challan.confirmed_at) doc.text(`Confirmed: ${new Date(challan.confirmed_at).toLocaleString()}`);
+    doc.text(`Created By: ${challan.created_by_name || '—'}`);
+    doc.moveDown();
+
+    doc.fontSize(13).text('Customer Details', { underline: true });
+    doc.fontSize(11);
+    doc.text(`Name: ${customer.customer_name}`);
+    if (customer.business_name) doc.text(`Business: ${customer.business_name}`);
+    doc.text(`Mobile: ${customer.mobile_number}`);
+    doc.text(`Type: ${customer.customer_type}`);
+    if (customer.address) doc.text(`Address: ${customer.address}`);
+    doc.moveDown();
+
+    const tableTop = doc.y + 10;
+    const columns = [
+      { label: 'Product', x: 50, width: 170 },
+      { label: 'SKU', x: 220, width: 90 },
+      { label: 'Qty', x: 310, width: 50 },
+      { label: 'Unit Price', x: 360, width: 80 },
+      { label: 'Line Total', x: 440, width: 80 },
+    ];
+
+    doc.fontSize(11).font('Helvetica-Bold');
+    columns.forEach((col) => doc.text(col.label, col.x, tableTop, { width: col.width }));
+    doc.moveTo(50, tableTop + 18).lineTo(520, tableTop + 18).stroke();
+
+    doc.font('Helvetica');
+    let rowY = tableTop + 25;
+    items.forEach((item) => {
+      const snap = item.product_snapshot;
+      doc.text(snap.product_name, columns[0].x, rowY, { width: columns[0].width });
+      doc.text(snap.sku, columns[1].x, rowY, { width: columns[1].width });
+      doc.text(String(item.quantity), columns[2].x, rowY, { width: columns[2].width });
+      doc.text(`Rs.${Number(item.unit_price).toFixed(2)}`, columns[3].x, rowY, { width: columns[3].width });
+      doc.text(`Rs.${Number(item.line_total).toFixed(2)}`, columns[4].x, rowY, { width: columns[4].width });
+      rowY += 22;
+    });
+
+    doc.moveTo(50, rowY + 5).lineTo(520, rowY + 5).stroke();
+    doc.font('Helvetica-Bold').fontSize(12);
+    doc.text(`Total Quantity: ${challan.total_quantity}`, 50, rowY + 15);
+    doc.text(`Total Amount: Rs.${Number(challan.total_amount).toFixed(2)}`, 300, rowY + 15);
+
+    doc.end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, getById, create, confirm, cancel, downloadPdf };
