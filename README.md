@@ -1,76 +1,133 @@
 # Mini ERP + CRM Operations Portal
 
-A full-stack Mini ERP/CRM system for a wholesale/distribution company — customers, products, inventory, and sales challans with role-based access.
-
-**Stack:** React (Vite) · Node.js/Express · PostgreSQL · JWT Auth
-
-Every module below has been manually verified end-to-end via curl/API calls and in the browser (not an automated test suite - see "Known limitations" in the submission notes): login for all 4 roles, customer CRUD + follow-ups, product CRUD + stock movement log, and the full sales challan flow including stock deduction, negative-stock prevention, draft→confirm, and cancellation with stock reversal.
+A full-stack ERP/CRM system for wholesale/distribution companies — featuring Customer Management, Product & Inventory Tracking, Sales Challan generation, Role-based Access Control, Stock Movement Audit Trail, Public Self-Signup, and PDF Invoice Export.
 
 ---
 
-## 1. Project Structure
+## 🚀 Live Deployments
+
+Two independent, fully live deployments (either can be used for evaluation):
+
+| | Frontend | Backend API |
+|---|---|---|
+| **Render + Vercel + Neon** | [https://erm-crm-brown.vercel.app](https://erm-crm-brown.vercel.app) | [https://erm-crm.onrender.com](https://erm-crm.onrender.com) |
+| **AWS (EC2 + RDS + S3/CloudFront)** | [https://d37cx1xkjybczs.cloudfront.net](https://d37cx1xkjybczs.cloudfront.net) | [https://dv4zryvx1xlx6.cloudfront.net](https://dv4zryvx1xlx6.cloudfront.net) |
+
+**GitHub Repository:** [https://github.com/UtkarshGanoo/erm-crm](https://github.com/UtkarshGanoo/erm-crm)
+
+> Render's free tier sleeps after ~15 min idle - the first request afterward can take 30-60s to wake up. The AWS backend has no such cold start.
+
+---
+
+## 🏗 Architecture Overview
 
 ```
 erp-crm/
-├── backend/            # Node.js + Express + PostgreSQL REST API
+├── backend/                # Node.js + Express + PostgreSQL REST API
 │   ├── db/
-│   │   ├── schema.sql  # Full database schema
-│   │   └── seed.js     # Seeds 4 demo users (one per role)
+│   │   ├── schema.sql      # Full database schema
+│   │   └── seed.js         # Seeds 4 demo users (one per role)
 │   ├── src/
-│   │   ├── config/db.js
-│   │   ├── middleware/ # auth.js (JWT + roles), errorHandler.js
-│   │   ├── controllers/
+│   │   ├── config/db.js    # pg Pool - DATABASE_URL or discrete DB_* vars
+│   │   ├── middleware/     # auth.js (JWT verify + role authorize), errorHandler.js
+│   │   ├── controllers/    # auth, customer, product, challan, dashboard
 │   │   ├── routes/
 │   │   └── server.js
 │   ├── .env.example
 │   └── package.json
-└── frontend/            # React (Vite) admin UI
-    ├── src/
-    │   ├── api/         # axios instance + service functions
-    │   ├── context/      # AuthContext (JWT session)
-    │   ├── components/   # Layout, ProtectedRoute, StatusBadge, Pagination
-    │   └── pages/        # Login, Dashboard, Customers, Products, Challans
-    ├── .env.example
-    └── package.json
+├── frontend/                # React (Vite) admin UI
+│   ├── src/
+│   │   ├── api/            # axios instance (JWT interceptor) + service functions
+│   │   ├── context/         # AuthContext (JWT session, login/signup/logout)
+│   │   ├── components/      # Layout, ProtectedRoute, StatusBadge, Pagination, Alert
+│   │   └── pages/            # Login, Signup, Dashboard, Customers, Products, Challans
+│   ├── .env.example
+│   └── package.json
+├── .github/workflows/ci-cd.yml   # build check + automated AWS deploy
+├── postman_collection.json
+├── postman_environment_local.json
+├── postman_environment_production.json
+└── SUBMISSION.md
 ```
+
+**Data Flow:**
+`React SPA → Axios (JWT in Authorization header) → Express REST API → node-postgres (pg) → PostgreSQL`
+
+**Key Design Decisions:**
+- JWT stored in `localStorage`, attached via an Axios request interceptor; a response interceptor force-logs-out on any `401`.
+- Role checks are enforced in the `authorize()` **backend** middleware on every route, not just hidden in the UI - the frontend hiding a button is a UX nicety, not the security boundary.
+- Stock is only ever deducted when a challan is `Confirmed`; a `SELECT ... FOR UPDATE` row lock plus a re-check at confirm time prevents negative stock even under concurrent requests.
+- Every challan stores a **customer + product snapshot** (JSONB) at time of sale, so historical invoices stay accurate even if the customer/product record changes later.
+- Cancelling a `Confirmed` challan restores stock and logs a reversing `IN` stock movement - nothing is silently lost.
+- Two deployments exist side by side: Vercel+Render+Neon (all auto-deploy on git push via native GitHub integration) and AWS EC2+RDS+S3/CloudFront (deploys via `.github/workflows/ci-cd.yml`). A second CloudFront distribution fronts the EC2 backend purely to give it an HTTPS URL, avoiding mixed-content blocking from the HTTPS frontend.
 
 ---
 
-## 2. Local Setup — Step by Step (copy-paste)
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, Vite, Tailwind CSS, React Router DOM, Axios |
+| Backend | Node.js, Express 5, express-validator |
+| Database | PostgreSQL (Neon in one deployment, RDS in the other) |
+| Auth | JSON Web Tokens (JWT) + bcryptjs |
+| PDF Export | pdfkit |
+| Process management | pm2 (AWS EC2) |
+| CI/CD | GitHub Actions |
+
+---
+
+## 🔑 Test Credentials (All Roles)
+
+Seeded via `backend/db/seed.js`, present in both deployments' databases:
+
+| Role | Email | Password | Permissions |
+|---|---|---|---|
+| **Admin** | `admin@erp.com` | `Admin@123` | Full access to all modules |
+| **Sales** | `sales@erp.com` | `Admin@123` | Customers + Challans (create/edit) |
+| **Warehouse** | `warehouse@erp.com` | `Admin@123` | Products + Stock adjustment, confirm challans |
+| **Accounts** | `accounts@erp.com` | `Admin@123` | Read-heavy access across modules |
+
+New accounts can also be self-registered via the **"Sign up"** link on the login page - limited to `sales`/`warehouse`/`accounts` roles; `admin` is intentionally not self-assignable and is only provisioned via the seed script.
+
+---
+
+## 📦 Local Setup Instructions
 
 ### Prerequisites
 - Node.js 18+ and npm
-- PostgreSQL 14+ installed locally (or a free cloud Postgres — see Section 4)
+- PostgreSQL 14+ installed locally (or a free cloud Postgres - see Deployment Guide below)
 
-### Step 1 — Create the database
-
+### 1. Clone the Repository
 ```bash
-# Open psql (adjust user if needed)
-psql -U postgres
+git clone https://github.com/UtkarshGanoo/erm-crm.git
+cd erm-crm
+```
 
-# Inside psql:
+### 2. Create the database
+```bash
+psql -U postgres
 CREATE DATABASE erp_crm;
 \q
 ```
 
-### Step 2 — Backend setup
-
+### 3. Backend Setup
 ```bash
 cd backend
 npm install
-
-# Copy the example env file and edit values (DB password, JWT secret, etc.)
 cp .env.example .env
 ```
 
-Open `backend/.env` and set your real Postgres credentials:
-```
+Edit `backend/.env` with your real Postgres credentials:
+```env
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=your_postgres_password
 DB_NAME=erp_crm
 JWT_SECRET=some_long_random_string_here
+JWT_EXPIRES_IN=8h
+CORS_ORIGIN=http://localhost:5173
 ```
 
 Load the schema and seed demo users:
@@ -82,20 +139,10 @@ npm run seed
 Start the API:
 ```bash
 npm run dev
-# API runs on http://localhost:5000
-# Test it: curl http://localhost:5000/health
+# API runs on http://localhost:5000 - test with: curl http://localhost:5000/health
 ```
 
-**Demo login accounts** (all use password `Admin@123`):
-| Role      | Email               |
-|-----------|---------------------|
-| Admin     | admin@erp.com       |
-| Sales     | sales@erp.com       |
-| Warehouse | warehouse@erp.com   |
-| Accounts  | accounts@erp.com    |
-
-### Step 3 — Frontend setup
-
+### 4. Frontend Setup
 Open a **new terminal**:
 ```bash
 cd frontend
@@ -103,182 +150,134 @@ npm install
 cp .env.example .env
 ```
 
-`frontend/.env` should point at your backend:
-```
+`frontend/.env`:
+```env
 VITE_API_URL=http://localhost:5000
 ```
 
 Start the dev server:
 ```bash
 npm run dev
-# App runs on http://localhost:5173
 ```
 
-Open `http://localhost:5173` in your browser and log in with `admin@erp.com` / `Admin@123`, or click "Sign up" to create a new account (self-signup is limited to the `sales`, `warehouse`, and `accounts` roles - `admin` accounts are provisioned separately via the seed script, not self-assignable).
+The app is available at **http://localhost:5173**. Log in with `admin@erp.com` / `Admin@123`, or click **"Sign up"** to create a new account.
 
 ---
 
-## 3. API Reference
+## ☁️ Deployment Guide
 
-All endpoints (except `/auth/login` and `/health`) require:
-`Authorization: Bearer <token>`
+### Frontend → Vercel
+1. Push the repository to GitHub.
+2. On [vercel.com](https://vercel.com), **New Project**, import the repo, set **Root Directory** to `frontend`.
+3. Framework preset: Vite. Build command: `npm run build`. Output: `dist`.
+4. Environment variable: `VITE_API_URL=https://<your-backend-url>`.
 
-### Auth
-| Method | Endpoint         | Roles          | Description |
-|--------|------------------|----------------|--------------|
-| POST   | `/auth/login`    | Public         | Returns JWT + user |
-| POST   | `/auth/register` | Public         | Self-signup (role limited to `sales`/`warehouse`/`accounts` - `admin` is not self-assignable). Returns JWT + user, same as login. |
-| GET    | `/auth/me`       | Any logged in  | Current user info |
+### Backend → Render
+1. On [render.com](https://render.com), **New → Web Service**, connect the repo, set **Root Directory** to `backend`.
+2. Build command: `npm install`. Start command: `npm start`.
+3. Environment variables:
+   - `DATABASE_URL` - your Postgres connection string
+   - `DB_SSL=true`
+   - `JWT_SECRET` - a long random string
+   - `JWT_EXPIRES_IN=8h`
+   - `CORS_ORIGIN` - your deployed frontend URL (set after the frontend is live)
 
-### Customers (CRM)
-| Method | Endpoint                        | Roles                     |
-|--------|----------------------------------|---------------------------|
-| GET    | `/customers?search=&status=&customer_type=&page=&limit=` | admin, sales, accounts |
-| GET    | `/customers/:id`                 | admin, sales, accounts |
-| POST   | `/customers`                     | admin, sales |
-| PUT    | `/customers/:id`                 | admin, sales |
-| POST   | `/customers/:id/followups`       | admin, sales |
+### Database → Neon (or Supabase / Render Postgres)
+1. Create a free project at [neon.tech](https://neon.tech), copy the connection string.
+2. Load schema + seed once locally:
+   ```bash
+   psql "postgresql://user:pass@host/dbname?sslmode=require" -f backend/db/schema.sql
+   DATABASE_URL="postgresql://user:pass@host/dbname?sslmode=require" DB_SSL=true node backend/db/seed.js
+   ```
 
-### Products & Inventory
-| Method | Endpoint                             | Roles |
-|--------|----------------------------------------|-------|
-| GET    | `/products?search=&category=&low_stock=true&page=&limit=` | all roles |
-| GET    | `/products/:id`                       | all roles |
-| POST   | `/products`                           | admin, warehouse |
-| PUT    | `/products/:id`                       | admin, warehouse |
-| POST   | `/products/:id/stock-movement`        | admin, warehouse |
-| GET    | `/products/:id/stock-movements`       | admin, warehouse, accounts |
+### (Bonus) AWS - EC2 + RDS + S3/CloudFront
+This project also ships a second, fully automated AWS deployment:
+- **Database**: RDS for PostgreSQL (`db.t3.micro`, private - only reachable from the EC2 security group).
+- **Backend**: EC2 instance running the Node app via `pm2`, behind an `nginx` reverse proxy. A second CloudFront distribution fronts it purely to provide an HTTPS URL (avoids custom-domain/ACM certificate setup).
+- **Frontend**: built and synced to a private S3 bucket, served via CloudFront with Origin Access Control (bucket has no public access - only that CloudFront distribution can read it).
+- **Automation**: see `.github/workflows/ci-cd.yml` - pushes to `main` auto-deploy every layer.
 
-### Sales Challans
-| Method | Endpoint                    | Roles |
-|--------|-------------------------------|-------|
-| GET    | `/challans?status=&customer_id=&page=&limit=` | all roles |
-| GET    | `/challans/:id`               | all roles |
-| GET    | `/challans/:id/pdf`           | all roles | Downloads the challan as a PDF invoice |
-| POST   | `/challans`                   | admin, sales |
-| PATCH  | `/challans/:id/confirm`       | admin, sales, warehouse |
-| PATCH  | `/challans/:id/cancel`        | admin, sales |
+---
 
-### Dashboard
-| Method | Endpoint             | Roles |
-|--------|-----------------------|-------|
-| GET    | `/dashboard/summary`  | all roles |
+## 🔧 Environment Variables
+
+| Variable | Where | Description |
+|---|---|---|
+| `DATABASE_URL` / `DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME` | backend/.env | Postgres connection (either form works) |
+| `DB_SSL` | backend/.env | Set `true` for hosted Postgres (Neon/RDS) |
+| `JWT_SECRET` | backend/.env | Secret key for signing JWTs |
+| `JWT_EXPIRES_IN` | backend/.env | Token lifetime (default `8h`) |
+| `CORS_ORIGIN` | backend/.env | Allowed frontend origin |
+| `PORT` | backend/.env | Express port (default `5000`) |
+| `VITE_API_URL` | frontend/.env | Backend base URL the SPA calls |
+
+---
+
+## 📮 API Documentation
+
+A full Postman collection is included: **[`postman_collection.json`](postman_collection.json)**, with environment files [`postman_environment_local.json`](postman_environment_local.json) and [`postman_environment_production.json`](postman_environment_production.json).
+
+Import all three into Postman, select an environment, run **Auth → Login** first (it auto-captures the JWT into a collection variable), then every other request uses it automatically.
+
+All endpoints (except `/auth/login`, `/auth/register`, and `/health`) require `Authorization: Bearer <token>`.
+
+### Key Endpoints
+
+| Method | Endpoint | Roles | Description |
+|---|---|---|---|
+| POST | `/auth/login` | Public | Login, returns JWT + user |
+| POST | `/auth/register` | Public | Self-signup (`sales`/`warehouse`/`accounts` only), returns JWT + user |
+| GET | `/auth/me` | Any logged in | Current user info |
+| GET | `/customers?search=&status=&customer_type=&page=&limit=` | admin, sales, accounts | List customers |
+| POST | `/customers` | admin, sales | Create customer |
+| PUT | `/customers/:id` | admin, sales | Update customer |
+| POST | `/customers/:id/followups` | admin, sales | Add follow-up note |
+| GET | `/products?search=&category=&low_stock=&page=&limit=` | all roles | List products |
+| POST | `/products` | admin, warehouse | Add product |
+| POST | `/products/:id/stock-movement` | admin, warehouse | Adjust stock IN/OUT |
+| GET | `/products/:id/stock-movements` | admin, warehouse, accounts | Stock movement log |
+| GET | `/challans?status=&customer_id=&page=&limit=` | all roles | List challans |
+| GET | `/challans/:id/pdf` | all roles | Download challan as PDF invoice |
+| POST | `/challans` | admin, sales | Create challan (Draft or Confirmed) |
+| PATCH | `/challans/:id/confirm` | admin, sales, warehouse | Confirm challan (reduces stock) |
+| PATCH | `/challans/:id/cancel` | admin, sales | Cancel challan (restores stock) |
+| GET | `/dashboard/summary` | all roles | Dashboard stats |
 
 **Standard response shape:**
 ```json
-{ "success": true, "data": { ... }, "pagination": { "page":1, "limit":10, "total":42, "totalPages":5 } }
+{ "success": true, "data": { ... }, "pagination": { "page": 1, "limit": 10, "total": 42, "totalPages": 5 } }
 { "success": false, "message": "...", "errors": [{ "field": "email", "message": "Invalid email" }] }
 ```
 
 ---
 
-## 4. Key Business Logic (already implemented & tested)
+## ✅ Features Implemented
 
-- **Challan numbers** are auto-generated (`CH-2026-0001`, sequential per year).
-- **Draft challans** do NOT touch stock. **Confirmed challans** reduce stock immediately.
-- Stock can **never go negative** — the API rejects the request with a `400` and a clear message if requested quantity exceeds available stock (re-checked again at confirm time, in case stock changed between draft creation and confirmation).
-- Every challan line item stores a **product snapshot** (name, SKU, price at time of sale) and every challan stores a **customer snapshot** — so historical challans stay accurate even if the customer/product record changes later.
-- **Cancelling a Confirmed challan** automatically restores the stock and logs a reversing `IN` stock movement.
-- Every stock change (opening stock, manual adjustment, challan confirm, challan cancel) is written to the `stock_movements` audit table with who/when/why.
-- All list endpoints support **pagination + search/filter**.
-- All write endpoints run through **express-validator** and return `422` with per-field messages on invalid input.
-
----
-
-## 5. Deployment Guide (free-tier friendly)
-
-Recommended combo: **Neon** (Postgres) + **Render** (backend) + **Vercel** (frontend).
-
-### 5.1 Database — Neon (or Supabase / Render Postgres)
-1. Create a free account at https://neon.tech and create a new project/database.
-2. Copy the connection string (it looks like `postgresql://user:pass@host/dbname?sslmode=require`).
-3. Run the schema against it locally once:
-   ```bash
-   psql "postgresql://user:pass@host/dbname?sslmode=require" -f backend/db/schema.sql
-   ```
-4. Seed it:
-   ```bash
-   DATABASE_URL="postgresql://user:pass@host/dbname?sslmode=require" DB_SSL=true node backend/db/seed.js
-   ```
-
-### 5.2 Backend — Render
-1. Push this repo to GitHub (see Section 6).
-2. On https://render.com, click **New → Web Service**, connect your repo, set root directory to `backend`.
-3. Build command: `npm install`  ·  Start command: `npm start`
-4. Add environment variables in Render's dashboard:
-   - `DATABASE_URL` = (your Neon connection string)
-   - `DB_SSL` = `true`
-   - `JWT_SECRET` = (a long random string)
-   - `JWT_EXPIRES_IN` = `8h`
-   - `CORS_ORIGIN` = (your Vercel frontend URL, once you have it)
-5. Deploy. Note the public URL, e.g. `https://erp-crm-backend.onrender.com`.
-
-### 5.3 Frontend — Vercel
-1. On https://vercel.com, **New Project**, import the same repo, set root directory to `frontend`.
-2. Framework preset: Vite.
-3. Add environment variable:
-   - `VITE_API_URL` = `https://erp-crm-backend.onrender.com` (your Render URL from above)
-4. Deploy. Vercel gives you a URL like `https://erp-crm.vercel.app`.
-5. Go back to Render and set `CORS_ORIGIN` to this exact Vercel URL, then redeploy the backend.
-
-### 5.4 (Optional) AWS deployment notes
-If AWS is specifically required by your evaluator instead of Render/Vercel:
-- **Backend**: Deploy to an EC2 instance (t2.micro, free tier) running Node via `pm2`, behind an Nginx reverse proxy on port 80/443, or use **Elastic Beanstalk** for a simpler managed deploy of the `backend/` folder.
-- **Database**: Use **RDS for PostgreSQL** (free tier eligible) instead of Neon — same `DATABASE_URL` pattern works.
-- **Frontend**: Build with `npm run build` inside `frontend/`, then upload the `dist/` folder to an **S3 bucket** configured for static website hosting, optionally fronted by **CloudFront** for HTTPS.
-- Document your exact EC2/RDS setup steps (security groups, inbound rules for port 5000/22, `.pem` key usage) in this README once deployed, as most evaluators want to see this documented, not just done.
+- [x] JWT Authentication with 4 roles (Admin, Sales, Warehouse, Accounts)
+- [x] Public self-signup (role-limited) alongside admin-provisioned accounts
+- [x] Role-based access enforced on the backend (middleware), not just the UI
+- [x] Customer CRM - all fields, add/edit, search (name/mobile/business), status/type filter, detail page, follow-up notes with history
+- [x] Product & Inventory - all fields, category/low-stock filter, full stock movement audit log (who/when/why)
+- [x] Sales Challan - auto-generated challan number, multi-product, Draft/Confirmed/Cancelled, atomic stock deduction with negative-stock guard, customer + product snapshots
+- [x] Cancel Challan - restores stock + logs a reversing movement
+- [x] Dashboard - live stats, recent challans, low-stock/leads counts
+- [x] PDF Export of challans (pdfkit)
+- [x] Server-side search, filter, and pagination on all list endpoints
+- [x] Input validation (express-validator) with proper HTTP status codes and per-field error messages
+- [x] Two independent live deployments (Render+Vercel+Neon, and AWS EC2+RDS+S3/CloudFront)
+- [x] GitHub Actions CI/CD - build/test check on every push/PR, automated AWS deploy on push to `main`
 
 ---
 
-## 6. GitHub Setup
+## ⚠️ Known Limitations & Assumptions
 
-```bash
-cd erp-crm
-git init
-git add .
-git commit -m "Initial commit: Mini ERP + CRM Operations Portal"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo>.git
-git push -u origin main
-```
+1. **No automated test suite.** Every flow (auth, CRUD, challan stock logic, PDF export) was verified manually via curl and in-browser during development, not via a committed Jest/Playwright/supertest suite - the most significant gap for a production-grade submission.
+2. **Render free tier cold starts.** The Render-hosted backend spins down after ~15 minutes idle; the first request afterward can take 30-60 seconds. The AWS backend does not have this issue.
+3. **No image upload pipeline.** The product form accepts an `image_url` string field, but there's no S3/upload integration for product photos - images must be hosted externally and linked by URL.
+4. **No Docker setup.** Local dev requires Node + PostgreSQL installed directly; there's no `Dockerfile`/`docker-compose.yml` for a one-command containerized environment.
+5. **No password reset / email verification flow.** Self-signup creates an account immediately with no email confirmation step, and there's no "forgot password" flow.
+6. **No refresh tokens.** JWTs expire after 8 hours with no silent refresh - users must log in again after expiry.
+7. **AWS SSH is open to 0.0.0.0/0.** The EC2 security group's port 22 was widened from a single-IP allowlist so GitHub Actions runners (no fixed IP range) can deploy. Actual login still requires the private key, but this is broader network exposure than a locked-down single-IP rule.
+8. **CloudFront-in-front-of-EC2 is a workaround, not a full CDN/API Gateway setup.** It exists solely to terminate HTTPS for the backend without provisioning a custom domain/ACM certificate.
 
-Suggested commit history for a case study (shows real progression, not one giant dump):
-```bash
-git commit -m "feat: database schema and backend project setup"
-git commit -m "feat: JWT auth with role-based access control"
-git commit -m "feat: customer CRM module (CRUD, search, follow-ups)"
-git commit -m "feat: product & inventory module with stock movement log"
-git commit -m "feat: sales challan module with stock deduction business logic"
-git commit -m "feat: React frontend - auth, layout, dashboard"
-git commit -m "feat: React frontend - customer, product, challan pages"
-git commit -m "docs: README with setup and deployment instructions"
-```
-
----
-
-## 7. What's Implemented vs. Bonus (not done)
-
-**Implemented:** all 4 core modules, JWT auth + public self-signup + roles, full REST API with validation/pagination/search, responsive React admin UI, challan business logic (draft/confirm/cancel, stock guard, snapshots), PDF invoice export, GitHub Actions CI/CD.
-
-**Not implemented (bonus/stretch items you can add later):** Docker setup, S3 image upload (the product form does accept an `image_url` field if you want to host images externally in the meantime).
-
----
-
-## 8. GitHub Actions CI/CD
-
-`.github/workflows/ci-cd.yml` runs on every push/PR to `main`:
-
-- **build-and-test** (always runs): installs backend + frontend dependencies, syntax-checks all backend source files, and builds the frontend - catches broken builds before they reach any deployment.
-- **deploy-aws** (push to `main` only, after build-and-test passes): builds the frontend against the AWS backend URL, syncs it to S3, invalidates the CloudFront cache, then SSHes into the EC2 instance to `git pull`, reinstall backend dependencies, and restart the app via `pm2 restart --update-env`.
-
-Render and Vercel aren't included in this workflow because they already auto-deploy on push via their own native GitHub integration - no Actions needed there.
-
-**Required repository secrets** (Settings → Secrets and variables → Actions → New repository secret):
-
-| Secret | Value |
-|--------|-------|
-| `AWS_ACCESS_KEY_ID` | Access key for an IAM user with EC2/S3/CloudFront permissions |
-| `AWS_SECRET_ACCESS_KEY` | Matching secret key |
-| `EC2_SSH_KEY` | Full contents of the `.pem` private key used to SSH into the EC2 instance |
-
-Everything else (bucket name, distribution ID, EC2 host, region) is hardcoded in the workflow's `env:` block since none of it is sensitive - only credentials and the SSH key need to be secrets.
+Full architecture/submission writeup also available in [`SUBMISSION.md`](SUBMISSION.md).
