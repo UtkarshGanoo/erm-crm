@@ -1,4 +1,4 @@
-# Mini ERP + CRM Operations Portal
+#MY CRM-CRP
 
 A full-stack ERP/CRM system for wholesale/distribution companies — featuring Customer Management, Product & Inventory Tracking, Sales Challan generation, Role-based Access Control, Stock Movement Audit Trail, Public Self-Signup, and PDF Invoice Export.
 
