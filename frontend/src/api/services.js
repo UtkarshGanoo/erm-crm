@@ -29,6 +29,7 @@ export const challanApi = {
   create: (payload) => api.post('/challans', payload),
   confirm: (id) => api.patch(`/challans/${id}/confirm`),
   cancel: (id) => api.patch(`/challans/${id}/cancel`),
+  downloadPdf: (id) => api.get(`/challans/${id}/pdf`, { responseType: 'blob' }),
 };
 
 export const dashboardApi = {

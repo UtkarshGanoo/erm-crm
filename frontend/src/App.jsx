@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 
 import Login from './pages/Login';
+import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import CustomerList from './pages/Customers/CustomerList';
 import CustomerForm from './pages/Customers/CustomerForm';
@@ -29,6 +30,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Dashboard /> : <Login />} />
+      <Route path="/signup" element={user ? <Dashboard /> : <Signup />} />
 
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
 

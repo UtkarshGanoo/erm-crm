@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Alert from '../components/Alert';
 
@@ -7,8 +7,8 @@ export default function Login() {
   const { login, loading, error } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState('admin@erp.com');
-  const [password, setPassword] = useState('Admin@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -51,11 +51,12 @@ export default function Login() {
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
-          <div className="text-xs text-slate-400 pt-2 border-t border-slate-100">
-            <p className="font-medium mb-1">Demo accounts (password: Admin@123)</p>
-            <p>admin@erp.com · sales@erp.com</p>
-            <p>warehouse@erp.com · accounts@erp.com</p>
-          </div>
+          <p className="text-sm text-center text-slate-500 pt-2 border-t border-slate-100">
+            Don't have an account?{' '}
+            <Link to="/signup" className="text-slate-900 font-medium hover:underline">
+              Sign up
+            </Link>
+          </p>
         </form>
       </div>
     </div>

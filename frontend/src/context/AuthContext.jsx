@@ -28,6 +28,24 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function signup(payload) {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await authApi.register(payload);
+      localStorage.setItem('erp_token', data.data.token);
+      localStorage.setItem('erp_user', JSON.stringify(data.data.user));
+      setUser(data.data.user);
+      return true;
+    } catch (err) {
+      const apiError = err.response?.data;
+      setError(apiError?.errors?.[0]?.message || apiError?.message || 'Signup failed. Please try again.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function logout() {
     localStorage.removeItem('erp_token');
     localStorage.removeItem('erp_user');
@@ -35,7 +53,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, error }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, loading, error }}>
       {children}
     </AuthContext.Provider>
   );

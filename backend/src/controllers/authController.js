@@ -3,6 +3,14 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { handleValidation } = require('../middleware/errorHandler');
 
+function issueToken(user) {
+  return jwt.sign(
+    { id: user.id, name: user.name, email: user.email, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+  );
+}
+
 // POST /auth/login
 async function login(req, res, next) {
   if (handleValidation(req, res)) return;
@@ -21,16 +29,10 @@ async function login(req, res, next) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    const token = jwt.sign(
-      { id: user.id, name: user.name, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
-    );
-
     res.json({
       success: true,
       data: {
-        token,
+        token: issueToken(user),
         user: { id: user.id, name: user.name, email: user.email, role: user.role },
       },
     });
@@ -39,7 +41,9 @@ async function login(req, res, next) {
   }
 }
 
-// POST /auth/register  (admin only - creates employee accounts)
+// POST /auth/register (public self-signup)
+// Anyone can create their own account, but only for operational roles -
+// 'admin' accounts are provisioned separately (seed/direct DB) and can't be self-assigned.
 async function register(req, res, next) {
   if (handleValidation(req, res)) return;
   const { name, email, password, role } = req.body;
@@ -52,7 +56,15 @@ async function register(req, res, next) {
        RETURNING id, name, email, role, created_at`,
       [name, email, passwordHash, role]
     );
-    res.status(201).json({ success: true, data: rows[0] });
+    const user = rows[0];
+
+    res.status(201).json({
+      success: true,
+      data: {
+        token: issueToken(user),
+        user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      },
+    });
   } catch (err) {
     next(err);
   }
