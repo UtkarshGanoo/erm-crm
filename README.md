@@ -4,7 +4,7 @@ A full-stack Mini ERP/CRM system for a wholesale/distribution company — custom
 
 **Stack:** React (Vite) · Node.js/Express · PostgreSQL · JWT Auth
 
-This project has been fully built and tested end-to-end (backend API tests + real browser tests via Playwright) — every module below is confirmed working: login for all 4 roles, customer CRUD + follow-ups, product CRUD + stock movement log, and the full sales challan flow including stock deduction, negative-stock prevention, draft→confirm, and cancellation with stock reversal.
+Every module below has been manually verified end-to-end via curl/API calls and in the browser (not an automated test suite - see "Known limitations" in the submission notes): login for all 4 roles, customer CRUD + follow-ups, product CRUD + stock movement log, and the full sales challan flow including stock deduction, negative-stock prevention, draft→confirm, and cancellation with stock reversal.
 
 ---
 
