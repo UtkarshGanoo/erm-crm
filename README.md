@@ -114,7 +114,7 @@ npm run dev
 # App runs on http://localhost:5173
 ```
 
-Open `http://localhost:5173` in your browser and log in with `admin@erp.com` / `Admin@123`.
+Open `http://localhost:5173` in your browser and log in with `admin@erp.com` / `Admin@123`, or click "Sign up" to create a new account (self-signup is limited to the `sales`, `warehouse`, and `accounts` roles - `admin` accounts are provisioned separately via the seed script, not self-assignable).
 
 ---
 
@@ -127,7 +127,7 @@ All endpoints (except `/auth/login` and `/health`) require:
 | Method | Endpoint         | Roles          | Description |
 |--------|------------------|----------------|--------------|
 | POST   | `/auth/login`    | Public         | Returns JWT + user |
-| POST   | `/auth/register` | admin          | Create a new employee login |
+| POST   | `/auth/register` | Public         | Self-signup (role limited to `sales`/`warehouse`/`accounts` - `admin` is not self-assignable). Returns JWT + user, same as login. |
 | GET    | `/auth/me`       | Any logged in  | Current user info |
 
 ### Customers (CRM)
@@ -154,6 +154,7 @@ All endpoints (except `/auth/login` and `/health`) require:
 |--------|-------------------------------|-------|
 | GET    | `/challans?status=&customer_id=&page=&limit=` | all roles |
 | GET    | `/challans/:id`               | all roles |
+| GET    | `/challans/:id/pdf`           | all roles | Downloads the challan as a PDF invoice |
 | POST   | `/challans`                   | admin, sales |
 | PATCH  | `/challans/:id/confirm`       | admin, sales, warehouse |
 | PATCH  | `/challans/:id/cancel`        | admin, sales |
@@ -257,6 +258,27 @@ git commit -m "docs: README with setup and deployment instructions"
 
 ## 7. What's Implemented vs. Bonus (not done)
 
-**Implemented:** all 4 core modules, JWT auth + roles, full REST API with validation/pagination/search, responsive React admin UI, challan business logic (draft/confirm/cancel, stock guard, snapshots).
+**Implemented:** all 4 core modules, JWT auth + public self-signup + roles, full REST API with validation/pagination/search, responsive React admin UI, challan business logic (draft/confirm/cancel, stock guard, snapshots), PDF invoice export, GitHub Actions CI/CD.
 
-**Not implemented (bonus/stretch items you can add later):** Docker setup, GitHub Actions CI/CD, PDF invoice export, S3 image upload (the product form does accept an `image_url` field if you want to host images externally in the meantime).
+**Not implemented (bonus/stretch items you can add later):** Docker setup, S3 image upload (the product form does accept an `image_url` field if you want to host images externally in the meantime).
+
+---
+
+## 8. GitHub Actions CI/CD
+
+`.github/workflows/ci-cd.yml` runs on every push/PR to `main`:
+
+- **build-and-test** (always runs): installs backend + frontend dependencies, syntax-checks all backend source files, and builds the frontend - catches broken builds before they reach any deployment.
+- **deploy-aws** (push to `main` only, after build-and-test passes): builds the frontend against the AWS backend URL, syncs it to S3, invalidates the CloudFront cache, then SSHes into the EC2 instance to `git pull`, reinstall backend dependencies, and restart the app via `pm2 restart --update-env`.
+
+Render and Vercel aren't included in this workflow because they already auto-deploy on push via their own native GitHub integration - no Actions needed there.
+
+**Required repository secrets** (Settings → Secrets and variables → Actions → New repository secret):
+
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCESS_KEY_ID` | Access key for an IAM user with EC2/S3/CloudFront permissions |
+| `AWS_SECRET_ACCESS_KEY` | Matching secret key |
+| `EC2_SSH_KEY` | Full contents of the `.pem` private key used to SSH into the EC2 instance |
+
+Everything else (bucket name, distribution ID, EC2 host, region) is hardcoded in the workflow's `env:` block since none of it is sensitive - only credentials and the SSH key need to be secrets.
